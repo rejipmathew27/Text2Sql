@@ -5,21 +5,38 @@ import pandas as pd
 from langchain.agents import create_sql_agent
 from langchain.agents.agent_toolkits import SQLDatabaseToolkit
 from langchain.sql_database import SQLDatabase
+from langchain.llms import Ollama
 from langchain.agents import AgentExecutor
 from langchain.agents.agent_types import AgentType
-from langchain.chat_models import ChatOpenAI
 from langchain.callbacks import StreamlitCallbackHandler
 import pyreadstat
+import requests
+import io
 
-def read_data(file_path):
-    """Reads data from CSV, XLSX, or XPT files."""
+# GitHub repository details
+GITHUB_REPO = "your_github_username/your_repo_name"  # Replace with your GitHub repo
+GITHUB_FILES = ["AE.csv", "DM.xlsx", "IE.xpt", "LB.csv"]  # Default files
+
+def download_file_from_github(filename):
+    """Downloads a file from GitHub."""
+    url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{filename}"
     try:
-        if file_path.endswith(".csv"):
-            return pd.read_csv(file_path)
-        elif file_path.endswith(".xlsx"):
-            return pd.read_excel(file_path)
-        elif file_path.endswith(".xpt"):
-            df, meta = pyreadstat.read_xport(file_path)
+        response = requests.get(url)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        return io.BytesIO(response.content)
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error downloading {filename}: {e}")
+        return None
+
+def read_data(file_like_object, filename):
+    """Reads data from a file-like object."""
+    try:
+        if filename.endswith(".csv"):
+            return pd.read_csv(file_like_object)
+        elif filename.endswith(".xlsx"):
+            return pd.read_excel(file_like_object)
+        elif filename.endswith(".xpt"):
+            df, meta = pyreadstat.read_xport(file_like_object)
             return df
         else:
             raise ValueError("Unsupported file format.")
@@ -57,50 +74,32 @@ def create_sql_agent_from_db(db_path, llm):
 def main():
     st.title("Text to SQL Agent")
 
-    # OpenAI API Key Input
-    openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
-    if not openai_api_key:
-        st.warning("Please enter your OpenAI API key.")
-        return
+    model_name = st.selectbox("Select Ollama Model:", ["llama2", "mistral", "orca-mini"])
 
-    # Option to use files from a folder or upload files
-    source_option = st.radio("Select data source:", ("Upload files", "Use files from folder"))
+    source_option = st.radio("Select data source:", ("Upload files", "Use default files from GitHub", "Use files from folder"))
+
+    db_paths = []
 
     if source_option == "Upload files":
         uploaded_files = st.file_uploader("Upload CSV, XLSX, or XPT files", type=["csv", "xlsx", "xpt"], accept_multiple_files=True)
 
         if uploaded_files:
-            db_paths = []
             for uploaded_file in uploaded_files:
-                temp_file_path = f"temp_{uploaded_file.name}"
-                with open(temp_file_path, "wb") as f:
-                    f.write(uploaded_file.getvalue())
-
                 db_path = f"temp_{os.path.splitext(uploaded_file.name)[0]}.db"
-                df = read_data(temp_file_path)
+                df = read_data(uploaded_file, uploaded_file.name)
                 if df is not None:
                     if create_sqlite_db_from_dataframe(df, db_path, os.path.splitext(uploaded_file.name)[0]):
                         db_paths.append(db_path)
-                os.remove(temp_file_path)
 
-            if db_paths:
-                query = st.text_input("Enter your SQL query in natural language:")
-                if query:
-                    llm = ChatOpenAI(temperature=0, verbose=True, openai_api_key=openai_api_key, streaming=True)
-                    for db_path in db_paths:
-                        agent_executor = create_sql_agent_from_db(db_path, llm)
-                        if agent_executor:
-                            try:
-                                st_cb = StreamlitCallbackHandler(st.container())
-                                response = agent_executor.run(query, callbacks=[st_cb])
-                                st.write(response)
-
-                            except Exception as e:
-                                st.error(f"Error executing query: {e}")
-                        else:
-                            st.error("Agent creation failed.")
-                    for db_path in db_paths:
-                        os.remove(db_path)
+    elif source_option == "Use default files from GitHub":
+        for filename in GITHUB_FILES:
+            file_content = download_file_from_github(filename)
+            if file_content:
+                db_path = f"temp_{os.path.splitext(filename)[0]}.db"
+                df = read_data(file_content, filename)
+                if df is not None:
+                    if create_sqlite_db_from_dataframe(df, db_path, os.path.splitext(filename)[0]):
+                        db_paths.append(db_path)
 
     elif source_option == "Use files from folder":
         folder_path = st.text_input("Enter the folder path containing CSV, XLSX, or XPT files:")
@@ -109,37 +108,31 @@ def main():
             supported_files = [f for f in os.listdir(folder_path) if f.endswith((".csv", ".xlsx", ".xpt"))]
 
             if supported_files:
-                db_paths = []
                 for file in supported_files:
                     file_path = os.path.join(folder_path, file)
                     db_path = f"{os.path.splitext(file)[0]}.db"
-                    df = read_data(file_path)
+                    df = read_data(open(file_path, 'rb'), file)
                     if df is not None:
                         if create_sqlite_db_from_dataframe(df, db_path, os.path.splitext(file)[0]):
                             db_paths.append(db_path)
 
-                query = st.text_input("Enter your SQL query in natural language:")
-                if query:
-                    llm = ChatOpenAI(temperature=0, verbose=True, openai_api_key=openai_api_key, streaming=True)
-                    for db_path in db_paths:
-                        agent_executor = create_sql_agent_from_db(db_path, llm)
-                        if agent_executor:
-                            try:
-                                st_cb = StreamlitCallbackHandler(st.container())
-                                response = agent_executor.run(query, callbacks=[st_cb])
-                                st.write(response)
-
-                            except Exception as e:
-                                st.error(f"Error executing query: {e}")
-                        else:
-                            st.error("Agent creation failed.")
-                    for db_path in db_paths:
-                        os.remove(db_path)
-
-            else:
-                st.warning("No supported files found in the specified folder.")
-        elif folder_path:
-            st.error("Invalid folder path.")
+    if db_paths:
+        query = st.text_input("Enter your SQL query in natural language:")
+        if query:
+            llm = Ollama(model=model_name, verbose=True)
+            for db_path in db_paths:
+                agent_executor = create_sql_agent_from_db(db_path, llm)
+                if agent_executor:
+                    try:
+                        st_cb = StreamlitCallbackHandler(st.container())
+                        response = agent_executor.run(query, callbacks=[st_cb])
+                        st.write(response)
+                    except Exception as e:
+                        st.error(f"Error executing query: {e}")
+                else:
+                    st.error("Agent creation failed.")
+            for db_path in db_paths:
+                os.remove(db_path)
 
 if __name__ == "__main__":
     main()
