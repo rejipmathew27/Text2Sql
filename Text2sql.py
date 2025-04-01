@@ -57,7 +57,7 @@ def create_sql_agent_from_db(db_path, llm):
 def main():
     st.title("Text to SQL Agent")
 
-    # Ollama model selection.
+    # Ollama model selection. Ensure you have the model downloaded in ollama.
     model_name = st.selectbox("Select Ollama Model:", ["llama2", "mistral", "orca-mini"]) # Add more models as needed.
 
     # Option to use files from a folder or upload files
