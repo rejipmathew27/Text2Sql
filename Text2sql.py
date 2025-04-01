@@ -14,12 +14,12 @@ import requests
 import io
 
 # GitHub repository details
-GITHUB_REPO = "rejipmathew27/Text2sql"  # Replace with your GitHub username and repo name
+GITHUB_REPO = "rejipmathew27/Text2Sql"  # Replace with your GitHub username and repo name
 DEFAULT_FILES = ["AE.csv", "DM.csv", "LB.csv", "IE.csv"]
 
 def download_file_from_github(filename):
     """Downloads a file from GitHub."""
-    url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/blob/main/{filename}"  # Assuming 'main' branch
+    url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{filename}"  # Assuming 'main' branch
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
