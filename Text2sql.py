@@ -5,9 +5,9 @@ import pandas as pd
 from langchain.agents import create_sql_agent
 from langchain.agents.agent_toolkits import SQLDatabaseToolkit
 from langchain.sql_database import SQLDatabase
-from langchain.llms import Ollama  # Import Ollama
 from langchain.agents import AgentExecutor
 from langchain.agents.agent_types import AgentType
+from langchain.chat_models import ChatOpenAI
 from langchain.callbacks import StreamlitCallbackHandler
 import pyreadstat
 
@@ -57,8 +57,11 @@ def create_sql_agent_from_db(db_path, llm):
 def main():
     st.title("Text to SQL Agent")
 
-    # Ollama model selection. Ensure you have the model downloaded in ollama.
-    model_name = st.selectbox("Select Ollama Model:", ["llama2", "mistral", "orca-mini"]) # Add more models as needed.
+    # OpenAI API Key Input
+    openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
+    if not openai_api_key:
+        st.warning("Please enter your OpenAI API key.")
+        return
 
     # Option to use files from a folder or upload files
     source_option = st.radio("Select data source:", ("Upload files", "Use files from folder"))
@@ -83,7 +86,7 @@ def main():
             if db_paths:
                 query = st.text_input("Enter your SQL query in natural language:")
                 if query:
-                    llm = Ollama(model=model_name, verbose=True) # Use Ollama LLM
+                    llm = ChatOpenAI(temperature=0, verbose=True, openai_api_key=openai_api_key, streaming=True)
                     for db_path in db_paths:
                         agent_executor = create_sql_agent_from_db(db_path, llm)
                         if agent_executor:
@@ -117,7 +120,7 @@ def main():
 
                 query = st.text_input("Enter your SQL query in natural language:")
                 if query:
-                    llm = Ollama(model=model_name, verbose=True) # Use Ollama LLM
+                    llm = ChatOpenAI(temperature=0, verbose=True, openai_api_key=openai_api_key, streaming=True)
                     for db_path in db_paths:
                         agent_executor = create_sql_agent_from_db(db_path, llm)
                         if agent_executor:
