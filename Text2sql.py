@@ -14,7 +14,7 @@ import requests
 import io
 
 # GitHub repository details
-GITHUB_REPO = "your_github_username/your_repo_name"  # Replace with your GitHub username and repo name
+GITHUB_REPO = "https://github.com/rejipmathew27/Text2Sql/"  # Replace with your GitHub username and repo name
 DEFAULT_FILES = ["AE.csv", "DM.csv", "LB.csv", "IE.csv"]
 
 def download_file_from_github(filename):
