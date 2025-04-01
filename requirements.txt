@@ -2,6 +2,5 @@ streamlit
 langchain
 openai
 pandas
-pysqlite 2.8.3
 pyreadstat
 openpyxl
