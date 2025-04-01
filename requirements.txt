@@ -4,3 +4,4 @@ openai
 pandas
 pyreadstat
 openpyxl
+langchain-community
