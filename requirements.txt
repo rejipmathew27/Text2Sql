@@ -1,0 +1,7 @@
+streamlit
+langchain
+openai
+pandas
+pysqlite3
+pyreadstat
+openpyxl
