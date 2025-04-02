@@ -12,6 +12,7 @@ from langchain.callbacks import StreamlitCallbackHandler
 import pyreadstat
 import requests
 import io
+import traceback  # Import traceback
 
 # GitHub repository details
 GITHUB_REPO = "rejipmathew27/Text2Sql"  # Replace with your GitHub username and repo name
@@ -40,7 +41,7 @@ def read_data(file_like_object, filename):
                 df, meta = pyreadstat.read_xport(file_like_object)
                 return df
             except Exception as xpt_error:
-                st.error(f"Error reading XPT file {filename}: {xpt_error}")
+                st.error(f"Error reading XPT file {filename}: {xpt_error}\n{traceback.format_exc()}")  # Add traceback
                 return None
         else:
             raise ValueError("Unsupported file format.")
