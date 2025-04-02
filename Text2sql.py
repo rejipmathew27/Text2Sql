@@ -12,19 +12,20 @@ from langchain.callbacks import StreamlitCallbackHandler
 import pyreadstat
 import requests
 import io
-import traceback  # Import traceback
+import traceback
+import sas7bdat  # Import sas7bdat
 
 # GitHub repository details
-GITHUB_REPO = "rejipmathew27/Text2Sql"  # Replace with your GitHub username and repo name
+GITHUB_REPO = "rejipmathew27/Text2Sql"
 DEFAULT_FILES = ["AE.csv", "DM.csv", "LB.csv", "IE.csv"]
 
 def download_file_from_github(filename):
     """Downloads a file from GitHub."""
-    url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{filename}"  # Assuming 'main' branch
+    url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{filename}"
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-        return io.StringIO(response.text)  # Return file content as StringIO
+        response.raise_for_status()
+        return io.StringIO(response.text)
     except requests.exceptions.RequestException as e:
         st.error(f"Error downloading {filename}: {e}")
         return None
@@ -38,11 +39,23 @@ def read_data(file_like_object, filename):
             return pd.read_excel(file_like_object)
         elif filename.endswith(".xpt"):
             try:
+                # Attempt pyreadstat first
                 df, meta = pyreadstat.read_xport(file_like_object)
                 return df
-            except Exception as xpt_error:
-                st.error(f"Error reading XPT file {filename}: {xpt_error}\n{traceback.format_exc()}")  # Add traceback
-                return None
+            except Exception as pyreadstat_error:
+                try:
+                    # If pyreadstat fails, try sas7bdat
+                    temp_xpt_path = f"temp_{filename}"
+                    with open(temp_xpt_path, "wb") as f:
+                        f.write(file_like_object.getvalue().encode('utf-8')) #write bytes to temp file.
+                    sas_file = sas7bdat.SAS7BDAT(temp_xpt_path)
+                    data = sas_file.to_data_frame()
+                    os.remove(temp_xpt_path) #remove temp file.
+                    return data
+
+                except Exception as sas7bdat_error:
+                    st.error(f"Error reading XPT file {filename}: pyreadstat error: {pyreadstat_error}, sas7bdat error: {sas7bdat_error}\n{traceback.format_exc()}")
+                    return None
         else:
             raise ValueError("Unsupported file format.")
     except Exception as e:
@@ -79,16 +92,14 @@ def create_sql_agent_from_db(db_path, llm):
 def main():
     st.title("Text to SQL Agent")
 
-    # OpenAI API Key Input
     openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
     if not openai_api_key:
         st.warning("Please enter your OpenAI API key.")
         return
 
-    # Option to use files from a folder, upload files, or use default files
     source_option = st.radio("Select data source:", ("Upload files", "Use files from URL", "Use files from folder", "Use default files from GitHub"))
 
-    db_paths = []  # Initialize db_paths outside the conditional blocks
+    db_paths = []
 
     if source_option == "Upload files":
         uploaded_files = st.file_uploader("Upload CSV, XLSX, or XPT files", type=["csv", "xlsx", "xpt"], accept_multiple_files=True)
@@ -111,10 +122,10 @@ def main():
         if file_urls:
             urls = file_urls.splitlines()
             for url in urls:
-                url = url.strip()  # Remove leading/trailing whitespace
+                url = url.strip()
                 try:
                     response = requests.get(url)
-                    response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+                    response.raise_for_status()
                     filename = os.path.basename(url)
                     file_like_object = io.StringIO(response.text)
                     db_path = f"{os.path.splitext(filename)[0]}.db"
@@ -158,22 +169,22 @@ def main():
         query = st.text_input("Enter your SQL query in natural language:")
         if query:
             llm = ChatOpenAI(temperature=0, verbose=True, openai_api_key=openai_api_key, streaming=True)
-            results = []  # Store results for each database
+            results = []
             for db_path in db_paths:
                 agent_executor = create_sql_agent_from_db(db_path, llm)
                 if agent_executor:
                     try:
                         st_cb = StreamlitCallbackHandler(st.container())
                         response = agent_executor.run(query, callbacks=[st_cb])
-                        results.append(response)  # store results
+                        results.append(response)
                     except Exception as e:
                         st.error(f"Error executing query on {db_path}: {e}")
-                        results.append(f"Error: {e}")  # store error
+                        results.append(f"Error: {e}")
                 else:
                     st.error(f"Agent creation failed for {db_path}.")
-                    results.append("Agent creation failed.")  # store error
+                    results.append("Agent creation failed.")
             for result in results:
-                st.write(result)  # display all results
+                st.write(result)
         for db_path in db_paths:
             os.remove(db_path)
 
