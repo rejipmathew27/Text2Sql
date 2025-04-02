@@ -36,12 +36,16 @@ def read_data(file_like_object, filename):
         elif filename.endswith(".xlsx"):
             return pd.read_excel(file_like_object)
         elif filename.endswith(".xpt"):
-            df, meta = pyreadstat.read_xport(file_like_object)
-            return df
+            try:
+                df, meta = pyreadstat.read_xport(file_like_object)
+                return df
+            except Exception as xpt_error:
+                st.error(f"Error reading XPT file {filename}: {xpt_error}")
+                return None
         else:
             raise ValueError("Unsupported file format.")
     except Exception as e:
-        st.error(f"Error reading file: {e}")
+        st.error(f"Error reading file {filename}: {e}")
         return None
 
 def create_sqlite_db_from_dataframe(df, db_path, table_name):
