@@ -19,7 +19,7 @@ DEFAULT_FILES = ["AE.csv", "DM.csv", "LB.csv", "IE.csv"]
 
 def download_file_from_github(filename):
     """Downloads a file from GitHub."""
-    url = f"https://github.com/{GITHUB_REPO}/blob/main/{filename}"  # Assuming 'main' branch
+    url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{filename}"  # Assuming 'main' branch
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
@@ -81,7 +81,7 @@ def main():
         return
 
     # Option to use files from a folder, upload files, or use default files
-    source_option = st.radio("Select data source:", ("Upload files", "Use files from folder", "Use default files from GitHub"))
+    source_option = st.radio("Select data source:", ("Upload files", "Use files from URL", "Use files from folder", "Use default files from GitHub"))
 
     db_paths = []  # Initialize db_paths outside the conditional blocks
 
@@ -100,6 +100,27 @@ def main():
                     if create_sqlite_db_from_dataframe(df, db_path, os.path.splitext(uploaded_file.name)[0]):
                         db_paths.append(db_path)
                 os.remove(temp_file_path)
+
+    elif source_option == "Use files from URL":
+        file_urls = st.text_area("Enter file URLs (one per line):")
+        if file_urls:
+            urls = file_urls.splitlines()
+            for url in urls:
+                url = url.strip()  # Remove leading/trailing whitespace
+                try:
+                    response = requests.get(url)
+                    response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+                    filename = os.path.basename(url)
+                    file_like_object = io.StringIO(response.text)
+                    db_path = f"{os.path.splitext(filename)[0]}.db"
+                    df = read_data(file_like_object, filename)
+                    if df is not None:
+                        if create_sqlite_db_from_dataframe(df, db_path, os.path.splitext(filename)[0]):
+                            db_paths.append(db_path)
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Error loading file from {url}: {e}")
+                except Exception as e:
+                    st.error(f"An unexpected Error happened while processing {url}: {e}")
 
     elif source_option == "Use files from folder":
         folder_path = st.text_input("Enter the folder path containing CSV, XLSX, or XPT files:")
@@ -132,19 +153,24 @@ def main():
         query = st.text_input("Enter your SQL query in natural language:")
         if query:
             llm = ChatOpenAI(temperature=0, verbose=True, openai_api_key=openai_api_key, streaming=True)
+            results = []  # Store results for each database
             for db_path in db_paths:
                 agent_executor = create_sql_agent_from_db(db_path, llm)
                 if agent_executor:
                     try:
                         st_cb = StreamlitCallbackHandler(st.container())
                         response = agent_executor.run(query, callbacks=[st_cb])
-                        st.write(response)
+                        results.append(response)  # store results
                     except Exception as e:
-                        st.error(f"Error executing query: {e}")
+                        st.error(f"Error executing query on {db_path}: {e}")
+                        results.append(f"Error: {e}")  # store error
                 else:
-                    st.error("Agent creation failed.")
-            for db_path in db_paths:
-                os.remove(db_path)
+                    st.error(f"Agent creation failed for {db_path}.")
+                    results.append("Agent creation failed.")  # store error
+            for result in results:
+                st.write(result)  # display all results
+        for db_path in db_paths:
+            os.remove(db_path)
 
 if __name__ == "__main__":
     main()
