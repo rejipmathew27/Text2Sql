@@ -6,4 +6,3 @@ pyreadstat
 openpyxl
 langchain-community
 sas7bdat
-traceback
